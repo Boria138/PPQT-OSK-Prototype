@@ -48,12 +48,20 @@ def main():
 
     from .layouts import Layout
     from .detection import X11Layout
+    manual_layout = False
     try:
         if args.layout == 'auto':
             if ui == 'layer-shell':
-                raise RuntimeError('Для layer-shell задайте --layout ru (или другой язык). '
-                                   'Автоопределение доступно только в интерфейсе X11.')
-            layout = X11Layout()
+                from .niri_detection import NiriLayout
+                from .manual_layout import ManualLayout
+                try:
+                    layout = NiriLayout()
+                except (RuntimeError, ValueError, KeyError, TypeError, OSError) as exc:
+                    print(f'{exc}. Используется ручной режим US/RU.', file=sys.stderr)
+                    layout = ManualLayout()
+                    manual_layout = True
+            else:
+                layout = X11Layout()
         else:
             layout = Layout(args.layout, args.variant)
     except Exception as exc:
@@ -73,6 +81,8 @@ def main():
     root.set_border_width(8)
     window.add(root)
     status = Gtk.Label(label=backend.name + ' · раскладка системы · модификаторы на одно нажатие')
+    if manual_layout:
+        status.set_text(backend.name + ' · подписи: US · ручной режим US/RU')
     root.pack_start(status, False, False, 0)
     buttons = {}
 
@@ -118,6 +128,10 @@ def main():
     def switch_language(*unused):
         try:
             keyboard.switch_layout(switch_shortcut)
+            if manual_layout:
+                layout.switch()
+                status.set_text(backend.name + ' · подписи: ' + layout.language.upper()
+                                + ' · ручной режим, без определения системной раскладки')
         except Exception as exc:
             status.set_text(f'Не удалось переключить раскладку: {exc}')
         refresh()  # The auto-mode timer also catches asynchronous compositor changes.
