@@ -1,0 +1,165 @@
+import argparse
+import os
+import sys
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Системная экранная клавиатура Linux')
+    parser.add_argument('--ui', choices=['auto', 'x11', 'layer-shell'], default='auto',
+                        help='auto: layer-shell в niri, X11 в остальных сеансах')
+    parser.add_argument('--layout', default='auto', help='auto: текущая X11/XWayland раскладка; либо фиксированные подписи XKB: ru, us, de и др.')
+    parser.add_argument('--variant', default='', help='Вариант XKB, например dvorak')
+    parser.add_argument('--switch-shortcut',
+                        choices=['next-layout', 'super-space', 'alt-shift', 'ctrl-shift'],
+                        default='next-layout', help='Кнопка «Язык»: по умолчанию KEY_KBD_LAYOUT_NEXT')
+    parser.add_argument('--bottom-margin', type=int, default=0,
+                        help='Дополнительный отступ снизу в пикселях, если панель не определяется')
+    args = parser.parse_args()
+    if args.bottom_margin < 0:
+        parser.error('--bottom-margin не может быть отрицательным')
+    if args.layout == 'auto' and args.variant:
+        parser.error('--variant требует явного --layout, например --layout us')
+    from .windowing import choose_ui, configure_window
+    ui = choose_ui(args.ui, os.environ)
+    os.environ['GDK_BACKEND'] = 'wayland' if ui == 'layer-shell' else 'x11'
+    import gi
+    gi.require_version('Gtk', '3.0')
+    from gi.repository import Gtk, Gdk, GLib
+    from .backends import UInputBackend
+    from .keys import Keyboard, ROWS
+
+    if not Gtk.init_check()[0]:
+        print('Нет доступа к графическому сеансу', file=sys.stderr)
+        return 1
+    switch_shortcut = args.switch_shortcut
+    layer = None
+    if ui == 'layer-shell':
+        try:
+            gi.require_version('GtkLayerShell', '0.1')
+            from gi.repository import GtkLayerShell
+            if GtkLayerShell.is_supported():
+                layer = GtkLayerShell
+        except (ValueError, ImportError):
+            pass
+        if layer is None:
+            print('Нужны gtk-layer-shell с introspection и поддержка layer-shell в композиторе.',
+                  file=sys.stderr)
+            return 1
+
+    from .layouts import Layout
+    from .detection import X11Layout
+    try:
+        if args.layout == 'auto':
+            if ui == 'layer-shell':
+                raise RuntimeError('Для layer-shell задайте --layout ru (или другой язык). '
+                                   'Автоопределение доступно только в интерфейсе X11.')
+            layout = X11Layout()
+        else:
+            layout = Layout(args.layout, args.variant)
+    except Exception as exc:
+        print(f'Не удалось загрузить XKB: {exc}', file=sys.stderr)
+        return 1
+    try:
+        backend = UInputBackend()
+    except Exception as exc:
+        layout.close()
+        print(f'Не удалось подключить ввод: {exc}', file=sys.stderr)
+        return 1
+    keyboard = Keyboard(backend)
+    window = Gtk.Window(title='System Keyboard')
+    window.set_default_size(1000, 310)
+    configure_window(window, ui, Gdk, layer, args.bottom_margin)
+    root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+    root.set_border_width(8)
+    window.add(root)
+    status = Gtk.Label(label=backend.name + ' · раскладка системы · модификаторы на одно нажатие')
+    root.pack_start(status, False, False, 0)
+    buttons = {}
+
+    def refresh():
+        # Ctrl/Alt shortcuts must not turn printable labels into control characters.
+        try:
+            labels = layout.labels(keyboard.held & {42, 100})
+        except Exception as exc:
+            status.set_text(f'Ошибка определения раскладки: {exc}')
+            return True
+        for code, button in buttons.items():
+            text = ('● ' if code in keyboard.held else '') + labels.get(str(code), button.original_label)
+            if button.get_label() != text:
+                button.set_label(text)
+        return True
+
+    def tap(button, code):
+        try:
+            keyboard.tap(code)
+        except Exception as exc:
+            status.set_text(str(exc))
+        refresh()
+
+    for row in ROWS:
+        box = Gtk.Box(spacing=4, homogeneous=False)
+        root.pack_start(box, True, True, 0)
+        for label, code in row:
+            button = Gtk.Button(label=label)
+            button.original_label = label
+            button.set_can_focus(False)
+            button.set_size_request(48, 44)
+            button.connect('clicked', tap, code)
+            box.pack_start(button, True, True, 0)
+            if label == 'Space':
+                button.set_size_request(300, 44)
+            buttons[code] = button
+    footer = Gtk.Box(spacing=6)
+    root.pack_start(footer, False, False, 0)
+    language = Gtk.Button(label='Язык ⟳')
+    language.set_can_focus(False)
+    language.set_tooltip_text(f'Переключить системную раскладку: {switch_shortcut}')
+
+    def switch_language(*unused):
+        try:
+            keyboard.switch_layout(switch_shortcut)
+        except Exception as exc:
+            status.set_text(f'Не удалось переключить раскладку: {exc}')
+        refresh()  # The auto-mode timer also catches asynchronous compositor changes.
+
+    language.connect('clicked', switch_language)
+    footer.pack_start(language, False, False, 0)
+    reset = Gtk.Button(label='Отпустить модификаторы')
+    reset.set_can_focus(False)
+
+    def release(*unused):
+        try:
+            keyboard.release()
+        except Exception as exc:
+            status.set_text(str(exc))
+        refresh()
+
+    reset.connect('clicked', release)
+    footer.pack_start(reset, True, True, 0)
+    close = Gtk.Button(label='Закрыть')
+    close.set_can_focus(False)
+    close.connect('clicked', lambda *_: window.destroy())
+    footer.pack_start(close, False, False, 0)
+    window.connect('destroy', lambda *_: Gtk.main_quit())
+    refresh()
+    window.show_all()
+    timer = GLib.timeout_add(150, refresh) if args.layout == 'auto' else None
+    try:
+        Gtk.main()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if timer is not None:
+            GLib.source_remove(timer)
+        try:
+            keyboard.release()
+        finally:
+            try:
+                backend.close()
+            finally:
+                layout.close()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
