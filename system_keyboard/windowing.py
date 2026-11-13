@@ -4,8 +4,8 @@
 def choose_ui(requested, environment):
     if requested != 'auto':
         return requested
-    desktop = environment.get('XDG_CURRENT_DESKTOP', '').lower().split(':')
-    return 'layer-shell' if environment.get('NIRI_SOCKET') or 'niri' in desktop else 'x11'
+    from .wayland_detection import compositor
+    return 'layer-shell' if compositor(environment) else 'x11'
 
 
 def bottom_geometry(x, y, width, height, keyboard_height, bottom_margin=0):

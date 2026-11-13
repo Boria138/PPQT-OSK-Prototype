@@ -19,7 +19,7 @@ class NiriLayout:
         self.current = None
         self._update()
 
-    def _update(self):
+    def _query_name(self):
         try:
             result = subprocess.run(
                 ['niri', 'msg', '--json', 'keyboard-layouts'],
@@ -30,9 +30,12 @@ class NiriLayout:
         index = data['current_idx']
         if type(index) is not int or not 0 <= index < len(data['names']):
             raise ValueError('Некорректный индекс раскладки niri')
-        name = data['names'][index]
+        return data['names'][index]
+
+    def _update(self):
+        name = self._query_name()
         if name not in self.names:
-            raise ValueError(f'Раскладка niri отсутствует в реестре XKB: {name}')
+            raise ValueError(f'Раскладка отсутствует в реестре XKB: {name}')
         choice = self.names[name]
         if choice != self.current:
             replacement = Layout(*choice)
