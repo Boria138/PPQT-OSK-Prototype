@@ -38,7 +38,8 @@ class WindowingTests(unittest.TestCase):
         layer.set_anchor.assert_any_call(window, 3, False)
         layer.set_margin.assert_any_call(window, 1, 0)
         layer.set_keyboard_mode.assert_called_once_with(window, layer.KeyboardMode.NONE)
-        layer.auto_exclusive_zone_enable.assert_called_once_with(window)
+        layer.set_exclusive_zone.assert_called_once_with(window, 0)
+        layer.auto_exclusive_zone_enable.assert_not_called()
         window.set_decorated.assert_called_once_with(False)
         window.set_accept_focus.assert_called_once_with(False)
 

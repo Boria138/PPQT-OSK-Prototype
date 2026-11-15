@@ -96,7 +96,8 @@ def configure_window(window, ui, Gdk, layer=None, bottom_margin=0, drag_handle=N
         if bottom_margin:
             layer.set_margin(window, layer.Edge.BOTTOM, bottom_margin)
         layer.set_keyboard_mode(window, layer.KeyboardMode.NONE)
-        layer.auto_exclusive_zone_enable(window)
+        # Float over windows from the first map, without reserving desktop space.
+        layer.set_exclusive_zone(window, 0)
         return
     window.set_type_hint(Gdk.WindowTypeHint.DOCK)
     window.set_keep_above(True)
