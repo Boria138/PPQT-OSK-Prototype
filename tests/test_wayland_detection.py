@@ -24,7 +24,7 @@ class WaylandDetectionTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.registry = Path(self.tmp.name) / 'evdev.xml'
         self.registry.write_text(REGISTRY)
-        self.factory = self.enterContext(patch('system_keyboard.niri_detection.Layout'))
+        self.factory = self.enterContext(patch('system_keyboard.wayland_detection.Layout'))
         self.run = self.enterContext(patch('system_keyboard.wayland_detection.command'))
 
     def test_session_selection(self):
