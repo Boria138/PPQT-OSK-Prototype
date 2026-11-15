@@ -58,3 +58,52 @@ class WindowingTests(unittest.TestCase):
         self.assertIn('map', callbacks)
         self.assertIn('size-allocate', callbacks)
         self.assertIn('destroy', callbacks)
+
+    def test_drag_x11_stops_bottom_repositioning(self):
+        window, handle, gdk = Mock(), Mock(), Mock()
+        gdk.EventMask = types.SimpleNamespace(BUTTON_PRESS_MASK=1,
+            BUTTON_RELEASE_MASK=2, POINTER_MOTION_MASK=4)
+        window.get_size.return_value = (1000, 310)
+        window.get_position.return_value = (460, 730)
+        monitor = gdk.Display.get_default.return_value.get_primary_monitor.return_value
+        monitor.get_workarea.return_value = types.SimpleNamespace(
+            x=0, y=0, width=1920, height=1040)
+        configure_window(window, 'x11', gdk, drag_handle=handle)
+        events = {c.args[0]: c.args[1] for c in handle.connect.call_args_list}
+        event = types.SimpleNamespace(button=1, x_root=500, y_root=740)
+        events['button-press-event'](handle, event)
+        event.x_root, event.y_root = 600, 640
+        events['motion-notify-event'](handle, event)
+        window.move.assert_called_with(560, 630)
+        window.move.reset_mock()
+        callbacks = {c.args[0]: c.args[1] for c in window.connect.call_args_list}
+        callbacks['size-allocate']()
+        window.move.assert_not_called()
+        events['button-release-event'](handle, event)
+        self.assertFalse(events['motion-notify-event'](handle, event))
+
+    def test_drag_layer_shell_uses_margins_without_focus(self):
+        from system_keyboard.windowing import enable_drag
+        window, handle, gdk, layer = Mock(), Mock(), Mock(), Mock()
+        gdk.EventMask = types.SimpleNamespace(BUTTON_PRESS_MASK=1,
+            BUTTON_RELEASE_MASK=2, POINTER_MOTION_MASK=4)
+        layer.Edge = types.SimpleNamespace(LEFT=1, BOTTOM=2)
+        margins = {1: 0, 2: 40}
+        layer.get_margin.side_effect = lambda window, edge: margins[edge]
+        layer.set_margin.side_effect = lambda window, edge, value: margins.update({edge: value})
+        layer.get_monitor.return_value.get_geometry.return_value.width = 1920
+        window.get_size.return_value = (1000, 310)
+        enable_drag(window, handle, 'layer-shell', gdk, layer)
+        events = {c.args[0]: c.args[1] for c in handle.connect.call_args_list}
+        event = types.SimpleNamespace(button=3, x=20, y=10)
+        self.assertFalse(events['button-press-event'](handle, event))
+        event.button = 1
+        events['button-press-event'](handle, event)
+        event.x, event.y = 120, -90
+        events['motion-notify-event'](handle, event)
+        self.assertEqual(margins, {1: 560, 2: 140})
+        layer.set_exclusive_zone.assert_called_once_with(window, 0)
+        layer.set_anchor.assert_called_with(window, layer.Edge.LEFT, True)
+        window.present.assert_not_called()
+        events['button-release-event'](handle, event)
+        self.assertFalse(events['motion-notify-event'](handle, event))
