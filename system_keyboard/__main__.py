@@ -47,7 +47,7 @@ def main():
             return 1
 
     from .layouts import Layout
-    from .detection import X11Layout
+    from .detection import X11Layout, is_x11_session
     manual_layout = False
     try:
         if args.layout == 'auto':
@@ -130,7 +130,11 @@ def main():
 
     def switch_language(*unused):
         try:
-            if not manual_layout and hasattr(layout, 'switch'):
+            if (isinstance(layout, X11Layout) and is_x11_session(os.environ)
+                    and switch_shortcut == 'next-layout'):
+                layout.switch()
+            elif (not manual_layout and hasattr(layout, 'switch')
+                  and not isinstance(layout, X11Layout)):
                 layout.switch()
             else:
                 keyboard.switch_layout(switch_shortcut)

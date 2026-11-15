@@ -59,6 +59,33 @@ class DetectionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'XKB'):
             self.layout.labels()
 
+    def test_switch_locks_next_group_and_flushes(self):
+        self.layout.switch()
+        self.layout.lib.XkbLockGroup.assert_called_once_with(123, 0x100, 2)
+        self.layout.lib.XSync.assert_called_once_with(123, False)
+
+    def test_switch_state_error(self):
+        self.layout.lib.XkbGetState.side_effect = None
+        self.layout.lib.XkbGetState.return_value = 1
+        with self.assertRaisesRegex(RuntimeError, 'XKB'):
+            self.layout.switch()
+        self.layout.lib.XkbLockGroup.assert_not_called()
+
+    def test_switch_lock_error(self):
+        self.layout.lib.XkbLockGroup.return_value = 0
+        with self.assertRaisesRegex(RuntimeError, 'XKB'):
+            self.layout.switch()
+        self.layout.lib.XSync.assert_not_called()
+
+    def test_native_session_not_ui_backend(self):
+        from system_keyboard.detection import is_x11_session
+        self.assertTrue(is_x11_session({'XDG_SESSION_TYPE': 'x11', 'DISPLAY': ':0'}))
+        self.assertFalse(is_x11_session({'XDG_SESSION_TYPE': 'wayland',
+                                        'DISPLAY': ':0', 'GDK_BACKEND': 'x11'}))
+        self.assertFalse(is_x11_session({'DISPLAY': ':0', 'WAYLAND_DISPLAY': 'wayland-0'}))
+        self.assertTrue(is_x11_session({'DISPLAY': ':0'}))
+        self.assertFalse(is_x11_session({}))
+
     def test_close_idempotent(self):
         self.layout.close()
         self.layout.close()
@@ -85,6 +112,12 @@ class LiveDetectionTests(unittest.TestCase):
                     context.iteration(False)
 
             lib.XkbLockGroup(layout.display, 0x100, 0)
+            flush()
+            self.assertEqual(layout.labels()['16'], 'q')
+            layout.switch()
+            flush()
+            self.assertEqual(layout.labels()['16'], 'й')
+            layout.switch()
             flush()
             self.assertEqual(layout.labels()['16'], 'q')
             lib.XkbLockGroup(layout.display, 0x100, 1)

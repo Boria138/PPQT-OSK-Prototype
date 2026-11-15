@@ -5,6 +5,13 @@ import ctypes.util
 from .keys import ROWS, MODIFIERS
 
 
+def is_x11_session(environment):
+    session = environment.get('XDG_SESSION_TYPE')
+    if session:
+        return session == 'x11'
+    return bool(environment.get('DISPLAY')) and not environment.get('WAYLAND_DISPLAY')
+
+
 class XkbState(C.Structure):
     _fields_ = [('group', C.c_ubyte), ('locked_group', C.c_ubyte),
                 ('base_group', C.c_ushort), ('latched_group', C.c_ushort),
@@ -26,9 +33,22 @@ class X11Layout:
         self.lib.XCloseDisplay.argtypes = [C.c_void_p]
         self.lib.XkbGetState.argtypes = [C.c_void_p, C.c_uint, C.POINTER(XkbState)]
         self.lib.XkbGetState.restype = C.c_int
+        self.lib.XkbLockGroup.argtypes = [C.c_void_p, C.c_uint, C.c_uint]
+        self.lib.XkbLockGroup.restype = C.c_int
+        self.lib.XSync.argtypes = [C.c_void_p, C.c_int]
+        self.lib.XSync.restype = C.c_int
         self.display = self.lib.XOpenDisplay(None)
         if not self.display:
             raise RuntimeError('Не удалось открыть X11 для определения раскладки')
+
+    def switch(self):
+        """Advance the core keyboard group; the server wraps to configured groups."""
+        state = XkbState()
+        if self.lib.XkbGetState(self.display, 0x0100, C.byref(state)) != 0:
+            raise RuntimeError('Не удалось получить текущую раскладку XKB')
+        if not self.lib.XkbLockGroup(self.display, 0x0100, (state.group + 1) % 4):
+            raise RuntimeError('Не удалось переключить раскладку XKB')
+        self.lib.XSync(self.display, False)
 
     def labels(self, modifiers=()):
         state = XkbState()
