@@ -7,7 +7,7 @@ def main():
     parser = argparse.ArgumentParser(description='Системная экранная клавиатура Linux')
     parser.add_argument('--ui', choices=['auto', 'x11', 'layer-shell'], default='auto',
                         help='auto: layer-shell в COSMIC/niri/Sway/Hyprland, X11 в остальных сеансах')
-    parser.add_argument('--layout', default='auto', help='auto: раскладка X11, COSMIC/libei или IPC niri/Sway/Hyprland; gsettings: подписи по sources/mru-sources; либо фиксированные подписи XKB: ru, us, de и др.')
+    parser.add_argument('--layout', default='auto', help='auto: раскладка X11, COSMIC/Wayland или IPC niri/Sway/Hyprland; gsettings: подписи по sources/mru-sources; либо фиксированные подписи XKB: ru, us, de и др.')
     parser.add_argument('--variant', default='', help='Вариант XKB, например dvorak')
     parser.add_argument('--switch-shortcut',
                         choices=['next-layout', 'super-space', 'alt-shift', 'ctrl-shift'],
@@ -80,6 +80,9 @@ def main():
         print(f'Не удалось подключить ввод: {exc}', file=sys.stderr)
         return 1
     from .gsettings_detection import GSettingsLayout
+    from .cosmic_detection import CosmicLayout
+    if isinstance(layout, CosmicLayout):
+        layout.caps_lock = backend.caps_lock
     keyboard = Keyboard(backend)
     window = Gtk.Window(title='System Keyboard')
     window.set_default_size(1000, 310)

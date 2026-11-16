@@ -1,4 +1,5 @@
 import ctypes as C
+import os
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -11,19 +12,15 @@ class CosmicTests(unittest.TestCase):
     def setUp(self):
         self.adapter = CosmicLayout.__new__(CosmicLayout)
         self.adapter.lib = Mock()
-        self.adapter.context = 1
-        self.adapter.device = None
-        self.adapter.layout = self.adapter.mask = None
-        self.adapter.lib.ei_event_get_device.return_value = 42
+        self.adapter.display = None
+        self.adapter.layout = None
+        self.adapter.group = None
+        self.adapter.error = None
 
     def tearDown(self):
         self.adapter.close()
 
-    def event(self, kind):
-        self.adapter.lib.ei_event_get_type.return_value = kind
-        self.adapter._event(100)
-
-    def test_keymap_and_live_group_and_modifiers(self):
+    def test_keymap_and_unfocused_group(self):
         source = Layout('us,ru')
         try:
             serialize = source.lib.xkb_keymap_get_as_string
@@ -40,63 +37,70 @@ class CosmicTests(unittest.TestCase):
         with tempfile.TemporaryFile() as keymap:
             keymap.write(text)
             keymap.flush()
-            lib = self.adapter.lib
-            lib.ei_device_keyboard_get_keymap.return_value = 3
-            lib.ei_keymap_get_type.return_value = 1
-            lib.ei_keymap_get_size.return_value = len(text)
-            lib.ei_keymap_get_fd.return_value = keymap.fileno()
-            self.event(5)
-        lib.ei_get_event.return_value = None
-        for suffix in ('mods_depressed', 'mods_latched', 'mods_locked', 'group'):
-            getattr(lib, 'ei_event_keyboard_get_xkb_' + suffix).return_value = 0
-        self.event(9)
-        self.assertEqual(self.adapter.labels()['30'], 'a')
-        lib.ei_event_keyboard_get_xkb_group.return_value = 1
-        self.event(9)
-        self.assertEqual(self.adapter.labels()['30'], 'ф')
-        self.assertEqual(self.adapter.labels((42,))['30'], 'Ф')
-        lib.ei_event_keyboard_get_xkb_mods_locked.return_value = 2  # Caps Lock
-        self.event(9)
-        self.assertEqual(self.adapter.labels()['30'], 'Ф')
-        self.event(6)
-        with self.assertRaisesRegex(RuntimeError, 'недоступно'):
-            self.adapter.labels()
+            fd = os.dup(keymap.fileno())
+            self.adapter._keymap(1, fd, len(text))
+            with self.assertRaises(OSError):
+                os.fstat(fd)
+        self.adapter.lib.wl_display_dispatch_pending.return_value = 0
+        with patch('system_keyboard.cosmic_detection.select.select', return_value=([], [], [])):
+            self.adapter._group(0)
+            self.assertEqual(self.adapter.labels()['30'], 'a')
+            self.adapter._group(1)
+            self.assertEqual(self.adapter.labels()['30'], 'ф')
+            self.assertEqual(self.adapter.labels((42,))['30'], 'Ф')
+            self.adapter.caps_lock = lambda: True
+            self.assertEqual(self.adapter.labels()['30'], 'Ф')
+            self.assertEqual(self.adapter.labels((42,))['30'], 'ф')
+            self.adapter._group(0)
+            self.assertEqual(self.adapter.labels()['30'], 'A')
+            self.assertEqual(self.adapter.labels()['2'], '1')
+            self.assertEqual(self.adapter.labels((42,))['30'], 'a')
+            self.adapter.caps_lock = lambda: False
+            self.assertEqual(self.adapter.labels()['30'], 'a')
 
-    def test_seat_binds_keyboard_only(self):
-        self.event(3)
-        args = self.adapter.lib.ei_seat_bind_capabilities.call_args.args
-        self.assertEqual([arg.value for arg in args[1:]], [4, 0])
+    def test_invalid_keymap_closes_fd(self):
+        with tempfile.TemporaryFile() as keymap:
+            fd = os.dup(keymap.fileno())
+            with self.assertRaisesRegex(RuntimeError, 'неверная'):
+                self.adapter._keymap(1, fd, 0)
+            with self.assertRaises(OSError):
+                os.fstat(fd)
 
-    def test_disconnect_releases_event(self):
-        self.adapter.lib.ei_get_event.return_value = 100
-        self.adapter.lib.ei_event_get_type.return_value = 2
+    def test_short_keymap(self):
+        with tempfile.TemporaryFile() as keymap:
+            with self.assertRaisesRegex(RuntimeError, 'неполная'):
+                self.adapter._keymap(1, os.dup(keymap.fileno()), 10)
+
+    def test_disconnect(self):
         with self.assertRaisesRegex(RuntimeError, 'закрыто'):
-            self.adapter.labels()
-        self.adapter.lib.ei_event_unref.assert_called_once_with(100)
+            self.adapter._check(-1)
 
-    def test_initial_failure_cleans_context(self):
-        lib = Mock()
-        lib.ei_new_sender.return_value = 1
-        with patch('system_keyboard.cosmic_detection.load_libei', return_value=lib), \
-                patch('system_keyboard.cosmic_detection.sender_socket', side_effect=OSError('no bus')):
-            with self.assertRaisesRegex(RuntimeError, 'no bus'):
-                CosmicLayout()
-        lib.ei_unref.assert_called_once_with(1)
+    def test_callback_error_propagates(self):
+        self.adapter.error = ValueError('bad map')
+        with self.assertRaisesRegex(ValueError, 'bad map'):
+            self.adapter._check(0)
 
-    def test_invalid_keymap_size(self):
-        self.adapter.lib.ei_keymap_get_type.return_value = 1
-        self.adapter.lib.ei_keymap_get_size.return_value = 0
-        with self.assertRaisesRegex(RuntimeError, 'размер'):
-            self.event(5)
+    def test_close_releases_proxies_before_display(self):
+        self.adapter.display = 1
+        self.adapter.proxies = [2, 3]
+        self.adapter.close()
+        self.assertEqual(self.adapter.lib.method_calls,
+                         [unittest.mock.call.wl_proxy_destroy(3),
+                          unittest.mock.call.wl_proxy_destroy(2),
+                          unittest.mock.call.wl_display_disconnect(1)])
+        self.adapter.close()
+        self.assertEqual(self.adapter.lib.wl_display_disconnect.call_count, 1)
 
-    def test_initial_timeout(self):
-        lib = Mock()
-        lib.ei_new_sender.return_value = 1
-        lib.ei_setup_backend_fd.return_value = 0
-        lib.ei_get_event.return_value = None
-        with patch('system_keyboard.cosmic_detection.load_libei', return_value=lib), \
-                patch('system_keyboard.cosmic_detection.sender_socket', return_value=99), \
-                patch('system_keyboard.cosmic_detection.time.monotonic', side_effect=[0, 3]):
-            with self.assertRaisesRegex(RuntimeError, 'нет карты'):
-                CosmicLayout()
-        lib.ei_unref.assert_called_once_with(1)
+    def test_two_independent_clients_live(self):
+        if not os.environ.get('WAYLAND_DISPLAY') or 'cosmic' not in os.environ.get('XDG_CURRENT_DESKTOP', '').lower():
+            self.skipTest('requires COSMIC session')
+        first = CosmicLayout()
+        try:
+            second = CosmicLayout()
+            try:
+                self.assertEqual(first.labels(), second.labels())
+            finally:
+                second.close()
+            self.assertTrue(first.labels())
+        finally:
+            first.close()

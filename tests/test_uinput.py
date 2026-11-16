@@ -9,7 +9,7 @@ class UInputTests(unittest.TestCase):
     def setUp(self):
         self.factory = Mock()
         self.evdev = types.SimpleNamespace(UInput=self.factory,
-                                          ecodes=types.SimpleNamespace(EV_KEY=1, BUS_USB=3))
+                                          ecodes=types.SimpleNamespace(EV_KEY=1, EV_LED=17, LED_CAPSL=1, BUS_USB=3))
         self.modules = patch.dict('sys.modules', {'evdev': self.evdev})
         self.modules.start()
         self.addCleanup(self.modules.stop)
@@ -19,6 +19,25 @@ class UInputTests(unittest.TestCase):
         capabilities = self.factory.call_args.args[0]
         self.assertEqual(capabilities[1], sorted({c for row in ROWS for _, c in row} | {584}))
         backend.close()
+
+    def test_caps_feedback(self):
+        backend = UInputBackend()
+        self.assertEqual(self.factory.call_args.args[0][17], [1])
+        device = self.factory.return_value
+        device.read.return_value = [types.SimpleNamespace(type=17, code=1, value=1)]
+        self.assertTrue(backend.caps_lock())
+        device.read.side_effect = BlockingIOError()
+        self.assertTrue(backend.caps_lock())
+        device.read.side_effect = None
+        device.read.return_value = [types.SimpleNamespace(type=17, code=0, value=1),
+                                   types.SimpleNamespace(type=17, code=1, value=0)]
+        self.assertFalse(backend.caps_lock())
+        device.read.side_effect = OSError('lost')
+        with self.assertRaisesRegex(OSError, 'lost'):
+            backend.caps_lock()
+        backend.close()
+        with self.assertRaisesRegex(RuntimeError, 'закрыто'):
+            backend.caps_lock()
 
     def test_key_and_sync(self):
         backend = UInputBackend()
