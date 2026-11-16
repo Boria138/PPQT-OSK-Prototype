@@ -180,6 +180,9 @@ def main():
     footer.pack_start(close, False, False, 0)
     window.connect('destroy', lambda *_: Gtk.main_quit())
     refresh()
+    if ui == 'layer-shell':
+        from .layer_drag import install
+        install(window, drag_handle, layer, args.bottom_margin)
     window.show_all()
     timer = GLib.timeout_add(150, refresh) if args.layout in ('auto', 'gsettings') else None
     try:

@@ -25,25 +25,8 @@ def enable_drag(window, handle, ui, Gdk, layer):
     def press(widget, event):
         if event.button != 1:
             return False
-        if ui == 'layer-shell':
-            monitor = layer.get_monitor(window)
-            if monitor is None:
-                monitor = Gdk.Display.get_default().get_monitor(0)
-            if monitor is None:
-                return False
-            width = monitor.get_geometry().width
-            x = (layer.get_margin(window, layer.Edge.LEFT) if state['moved']
-                 else (width - window.get_size()[0]) // 2)
-            y = layer.get_margin(window, layer.Edge.BOTTOM)
-            layer.set_margin(window, layer.Edge.LEFT, x)
-            layer.set_anchor(window, layer.Edge.LEFT, True)
-            # A floating keyboard must not reserve desktop space.
-            layer.set_exclusive_zone(window, 0)
-        else:
-            x, y = window.get_position()
-        pointer = ((event.x, event.y) if ui == 'layer-shell'
-                   else (event.x_root, event.y_root))
-        state['origin'] = (*pointer, x, y)
+        x, y = window.get_position()
+        state['origin'] = (event.x_root, event.y_root, x, y)
         state['moved'] = True
         return True
 
@@ -51,17 +34,8 @@ def enable_drag(window, handle, ui, Gdk, layer):
         if state['origin'] is None:
             return False
         start_x, start_y, x, y = state['origin']
-        if ui == 'layer-shell':
-            # Wayland has no global pointer coordinates. Local displacement
-            # moves the surface until the handle is back under the pointer.
-            dx, dy = round(event.x - start_x), round(event.y - start_y)
-            x = layer.get_margin(window, layer.Edge.LEFT)
-            y = layer.get_margin(window, layer.Edge.BOTTOM)
-            layer.set_margin(window, layer.Edge.LEFT, x + dx)
-            layer.set_margin(window, layer.Edge.BOTTOM, y - dy)
-        else:
-            dx, dy = round(event.x_root - start_x), round(event.y_root - start_y)
-            window.move(x + dx, y + dy)
+        dx, dy = round(event.x_root - start_x), round(event.y_root - start_y)
+        window.move(x + dx, y + dy)
         return True
 
     def release(widget, event):
@@ -78,7 +52,7 @@ def enable_drag(window, handle, ui, Gdk, layer):
 
 def configure_window(window, ui, Gdk, layer=None, bottom_margin=0, drag_handle=None):
     drag = (enable_drag(window, drag_handle, ui, Gdk, layer)
-            if drag_handle is not None else {'moved': False})
+            if drag_handle is not None and ui != 'layer-shell' else {'moved': False})
     window.set_decorated(False)
     window.set_resizable(False)
     window.set_skip_taskbar_hint(True)

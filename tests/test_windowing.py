@@ -100,28 +100,8 @@ class WindowingTests(unittest.TestCase):
         events['button-release-event'](handle, event)
         self.assertFalse(events['motion-notify-event'](handle, event))
 
-    def test_drag_layer_shell_uses_margins_without_focus(self):
-        from system_keyboard.windowing import enable_drag
-        window, handle, gdk, layer = Mock(), Mock(), Mock(), Mock()
-        gdk.EventMask = types.SimpleNamespace(BUTTON_PRESS_MASK=1,
-            BUTTON_RELEASE_MASK=2, POINTER_MOTION_MASK=4)
-        layer.Edge = types.SimpleNamespace(LEFT=1, BOTTOM=2)
-        margins = {1: 0, 2: 40}
-        layer.get_margin.side_effect = lambda window, edge: margins[edge]
-        layer.set_margin.side_effect = lambda window, edge, value: margins.update({edge: value})
-        layer.get_monitor.return_value.get_geometry.return_value.width = 1920
-        window.get_size.return_value = (1000, 310)
-        enable_drag(window, handle, 'layer-shell', gdk, layer)
-        events = {c.args[0]: c.args[1] for c in handle.connect.call_args_list}
-        event = types.SimpleNamespace(button=3, x=20, y=10)
-        self.assertFalse(events['button-press-event'](handle, event))
-        event.button = 1
-        events['button-press-event'](handle, event)
-        event.x, event.y = 120, -90
-        events['motion-notify-event'](handle, event)
-        self.assertEqual(margins, {1: 560, 2: 140})
-        layer.set_exclusive_zone.assert_called_once_with(window, 0)
-        layer.set_anchor.assert_called_with(window, layer.Edge.LEFT, True)
-        window.present.assert_not_called()
-        events['button-release-event'](handle, event)
-        self.assertFalse(events['motion-notify-event'](handle, event))
+    def test_panel_position_clamps_to_monitor(self):
+        from system_keyboard.layer_drag import panel_position
+        self.assertEqual(panel_position(1920, 1080, 1000, 310, 560, 630), (560, 630))
+        self.assertEqual(panel_position(1920, 1080, 1000, 310, -200, 2000), (0, 770))
+        self.assertEqual(panel_position(640, 240, 1000, 310, 20, 30), (0, 0))
