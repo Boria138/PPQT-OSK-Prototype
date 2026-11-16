@@ -7,7 +7,7 @@ def main():
     parser = argparse.ArgumentParser(description='Системная экранная клавиатура Linux')
     parser.add_argument('--ui', choices=['auto', 'x11', 'layer-shell'], default='auto',
                         help='auto: layer-shell в niri/Sway/Hyprland, X11 в остальных сеансах')
-    parser.add_argument('--layout', default='auto', help='auto: раскладка X11 или IPC niri/Sway/Hyprland; gsettings: sources/current; либо фиксированные подписи XKB: ru, us, de и др.')
+    parser.add_argument('--layout', default='auto', help='auto: раскладка X11 или IPC niri/Sway/Hyprland; gsettings: подписи по sources/mru-sources; либо фиксированные подписи XKB: ru, us, de и др.')
     parser.add_argument('--variant', default='', help='Вариант XKB, например dvorak')
     parser.add_argument('--switch-shortcut',
                         choices=['next-layout', 'super-space', 'alt-shift', 'ctrl-shift'],
@@ -79,6 +79,7 @@ def main():
         layout.close()
         print(f'Не удалось подключить ввод: {exc}', file=sys.stderr)
         return 1
+    from .gsettings_detection import GSettingsLayout
     keyboard = Keyboard(backend)
     window = Gtk.Window(title='System Keyboard')
     window.set_default_size(1000, 310)
@@ -90,6 +91,8 @@ def main():
     window.add(root)
     root.pack_start(drag_handle, False, False, 0)
     status = Gtk.Label(label=backend.name + ' · раскладка системы · модификаторы на одно нажатие')
+    if isinstance(layout, GSettingsLayout):
+        status.set_text(backend.name + ' · подписи по истории GSettings, не состояние Shell')
     if manual_layout:
         status.set_text(backend.name + ' · подписи: US · ручной режим US/RU')
     root.pack_start(status, False, False, 0)
@@ -132,7 +135,10 @@ def main():
     root.pack_start(footer, False, False, 0)
     language = Gtk.Button(label='Язык ⟳')
     language.set_can_focus(False)
-    language.set_tooltip_text(f'Переключить системную раскладку: {switch_shortcut}')
+    language.set_tooltip_text(
+        'Переключить раскладку: сочетание из GSettings'
+        if isinstance(layout, GSettingsLayout) and switch_shortcut == 'next-layout'
+        else f'Переключить системную раскладку: {switch_shortcut}')
 
     def switch_language(*unused):
         try:
@@ -142,6 +148,8 @@ def main():
             elif (not manual_layout and hasattr(layout, 'switch')
                   and not isinstance(layout, X11Layout)):
                 layout.switch()
+            elif isinstance(layout, GSettingsLayout) and switch_shortcut == 'next-layout':
+                keyboard.switch_layout(layout.switch_codes())
             else:
                 keyboard.switch_layout(switch_shortcut)
             if manual_layout:

@@ -42,7 +42,7 @@ class Keyboard:
 
     def switch_layout(self, shortcut='next-layout'):
         """Send the configured desktop shortcut, not merely change labels."""
-        codes = SWITCH_SHORTCUTS[shortcut]
+        codes = SWITCH_SHORTCUTS[shortcut] if isinstance(shortcut, str) else tuple(shortcut)
         self.release()
         try:
             for code in codes:
