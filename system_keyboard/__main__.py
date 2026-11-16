@@ -80,9 +80,6 @@ def main():
         print(f'Не удалось подключить ввод: {exc}', file=sys.stderr)
         return 1
     from .gsettings_detection import GSettingsLayout
-    from .cosmic_detection import CosmicLayout
-    if isinstance(layout, CosmicLayout):
-        layout.caps_lock = backend.caps_lock
     keyboard = Keyboard(backend)
     window = Gtk.Window(title='System Keyboard')
     window.set_default_size(1000, 310)
@@ -104,12 +101,17 @@ def main():
     def refresh():
         # Ctrl/Alt shortcuts must not turn printable labels into control characters.
         try:
-            labels = layout.labels(keyboard.held & {42, 100})
+            caps_lock = backend.caps_lock()
+            modifiers = keyboard.held & {42, 100}
+            if caps_lock:
+                modifiers.add(58)
+            labels = layout.labels(modifiers)
         except Exception as exc:
             status.set_text(f'Ошибка определения раскладки: {exc}')
             return True
         for code, button in buttons.items():
-            text = ('● ' if code in keyboard.held else '') + labels.get(str(code), button.original_label)
+            active = caps_lock if code == 58 else code in keyboard.held
+            text = ('● ' if active else '') + labels.get(str(code), button.original_label)
             if button.get_label() != text:
                 button.set_label(text)
         return True

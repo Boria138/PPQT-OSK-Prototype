@@ -42,6 +42,10 @@ class DetectionTests(unittest.TestCase):
         self.layout.labels({42, 100})
         self.layout.keymap.translate_keyboard_state.assert_any_call(38, Gdk.ModifierType(129), 1)
 
+    def test_caps_feedback_with_shift(self):
+        self.layout.labels({58, 42})
+        self.layout.keymap.translate_keyboard_state.assert_any_call(38, Gdk.ModifierType(3), 1)
+
     def test_unicode_and_special_labels(self):
         self.layout.keymap.translate_keyboard_state.return_value = (True, Gdk.KEY_Cyrillic_ya, 0, 0, 0)
         labels = self.layout.labels()

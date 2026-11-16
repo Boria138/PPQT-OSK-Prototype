@@ -63,6 +63,8 @@ class X11Layout:
             mask |= int(Gdk.ModifierType.SHIFT_MASK)
         if 100 in modifiers:
             mask |= int(Gdk.ModifierType.MOD5_MASK)
+        if 58 in modifiers:
+            mask |= int(Gdk.ModifierType.LOCK_MASK)
         result = {}
         special = MODIFIERS | {1, 14, 15, 28, 58, 57, 103, 105, 106, 108, 111}
         for row in ROWS:
