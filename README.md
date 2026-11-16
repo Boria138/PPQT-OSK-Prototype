@@ -1,8 +1,8 @@
 # System Keyboard
 
 Экранная клавиатура Linux: **X11/XWayland** и **нативный layer-shell для niri**.
-Ввод только через **uinput** во всех сеансах. XTest, libei, портал и
-GNOME-расширение не используются. Интерфейс Python / GTK 3.
+Ввод только через **uinput** во всех сеансах. libei используется только для
+чтения состояния клавиатуры COSMIC. XTest, портал и GNOME-расширение не используются. Интерфейс Python / GTK 3.
 
 ## Окружение с uv
 
@@ -38,7 +38,7 @@ python -c "import gi; gi.require_version('Gtk', '3.0'); from gi.repository impor
 python -m system_keyboard
 ```
 
-Вне niri автоматически выбирается X11-интерфейс. `GDK_BACKEND=x11` больше не нужен:
+Вне COSMIC/niri/Sway/Hyprland автоматически выбирается X11-интерфейс. `GDK_BACKEND=x11` больше не нужен:
 программа задаёт backend GTK до его загрузки. Интерфейс можно указать явно:
 
 ```sh
@@ -64,6 +64,32 @@ python -m system_keyboard --ui x11 --bottom-margin 40
 окон зависят от оконного менеджера/композитора. Пространство под X11-окно пока
 не резервируется; оно может перекрывать нижнюю часть приложения.
 На xwayland-satellite этот интерфейс не заявлен как надёжный: для niri используйте layer-shell.
+
+### COSMIC: layer-shell + uinput
+
+```sh
+python -m system_keyboard
+# Фиксированные подписи, например:
+python -m system_keyboard --layout ru
+```
+
+При `XDG_CURRENT_DESKTOP=COSMIC` (в том числе в списке через двоеточие)
+автоматически выбирается нативный Wayland layer-shell, без XWayland.
+Нужны gtk-layer-shell и доступ к `/dev/uinput`, как и для других layer-shell-сеансов.
+Окно не захватывает клавиатурный фокус; ввод остаётся через uinput.
+
+В [cosmic-osk](https://github.com/pop-os/cosmic-osk) также используется layer-shell,
+но ввод и состояние клавиатуры обслуживаются через libei и D-Bus
+`com.system76.CosmicComp.Ei`. При `--layout auto` проект получает через этот API
+карту XKB, активную группу и модификаторы (включая Shift/AltGr/Caps Lock).
+Подписи следуют за внешним переключением раскладки, в том числе для вариантов XKB,
+и обновляются каждые 150 мс. Нужна системная библиотека **libei** (`libei.so.1`).
+Соединение libei используется только для состояния; ввод остаётся через uinput.
+Кнопка «Язык» отправляет заданное `--switch-shortcut`, а результат переключения
+считывается из состояния COSMIC. Автопоказ по активации текстового поля не реализован.
+Если libei или API COSMIC недоступны при запуске, выводится предупреждение и
+используются ручные подписи US/RU без синхронизации с внешними переключениями.
+`--ui x11` по-прежнему доступен явно.
 
 ### niri, Sway и Hyprland: layer-shell + uinput
 

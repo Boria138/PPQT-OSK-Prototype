@@ -6,8 +6,8 @@ import sys
 def main():
     parser = argparse.ArgumentParser(description='Системная экранная клавиатура Linux')
     parser.add_argument('--ui', choices=['auto', 'x11', 'layer-shell'], default='auto',
-                        help='auto: layer-shell в niri/Sway/Hyprland, X11 в остальных сеансах')
-    parser.add_argument('--layout', default='auto', help='auto: раскладка X11 или IPC niri/Sway/Hyprland; gsettings: подписи по sources/mru-sources; либо фиксированные подписи XKB: ru, us, de и др.')
+                        help='auto: layer-shell в COSMIC/niri/Sway/Hyprland, X11 в остальных сеансах')
+    parser.add_argument('--layout', default='auto', help='auto: раскладка X11, COSMIC/libei или IPC niri/Sway/Hyprland; gsettings: подписи по sources/mru-sources; либо фиксированные подписи XKB: ru, us, de и др.')
     parser.add_argument('--variant', default='', help='Вариант XKB, например dvorak')
     parser.add_argument('--switch-shortcut',
                         choices=['next-layout', 'super-space', 'alt-shift', 'ctrl-shift'],

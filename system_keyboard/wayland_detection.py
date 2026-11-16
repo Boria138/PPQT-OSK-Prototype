@@ -12,7 +12,7 @@ def compositor(environment):
                            ('sway', 'SWAYSOCK'), ('niri', 'NIRI_SOCKET')]:
         if environment.get(variable):
             return name
-    return next((name for name in ('hyprland', 'sway', 'niri') if name in desktop), None)
+    return next((name for name in ('hyprland', 'sway', 'niri', 'cosmic') if name in desktop), None)
 
 
 def command(args):
@@ -107,6 +107,9 @@ class HyprlandLayout(NiriLayout):
 
 
 def detect_layout(environment):
+    if compositor(environment) == 'cosmic':
+        from .cosmic_detection import CosmicLayout
+        return CosmicLayout()
     adapter = {'niri': NiriLayout, 'sway': SwayLayout,
                'hyprland': HyprlandLayout}.get(compositor(environment))
     if adapter is None:

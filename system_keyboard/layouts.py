@@ -25,13 +25,15 @@ def available_layouts(registry='/usr/share/X11/xkb/rules/evdev.xml'):
 
 
 class Layout:
-    def __init__(self, layout='us', variant=''):
+    def __init__(self, layout='us', variant='', *, keymap_text=None):
         self.context = self.keymap = None
         self.lib = C.CDLL(C.util.find_library('xkbcommon') or 'libxkbcommon.so.0')
         functions = {
             'xkb_context_new': ([C.c_int], C.c_void_p),
             'xkb_context_unref': ([C.c_void_p], None),
             'xkb_keymap_new_from_names': ([C.c_void_p, C.POINTER(Names), C.c_int], C.c_void_p),
+            'xkb_keymap_new_from_string': ([C.c_void_p, C.c_char_p, C.c_int, C.c_int], C.c_void_p),
+            'xkb_state_update_mask': ([C.c_void_p] + [C.c_uint] * 6, C.c_uint),
             'xkb_keymap_unref': ([C.c_void_p], None),
             'xkb_state_new': ([C.c_void_p], C.c_void_p),
             'xkb_state_unref': ([C.c_void_p], None),
@@ -47,16 +49,22 @@ class Layout:
         if not self.context:
             raise RuntimeError('Не удалось создать контекст XKB')
         names = Names(None, b'pc105', layout.encode(), variant.encode(), b'')
-        self.keymap = self.lib.xkb_keymap_new_from_names(self.context, C.byref(names), 0)
+        if keymap_text is None:
+            self.keymap = self.lib.xkb_keymap_new_from_names(self.context, C.byref(names), 0)
+        else:
+            self.keymap = self.lib.xkb_keymap_new_from_string(self.context, keymap_text, 1, 0)
         if not self.keymap:
             self.close()
             raise ValueError(f'Неизвестная раскладка XKB: {layout}+{variant}')
 
-    def labels(self, modifiers=()):
+    def labels(self, modifiers=(), *, mask=None):
         state = self.lib.xkb_state_new(self.keymap)
         if not state:
             raise RuntimeError('Не удалось создать состояние XKB')
         try:
+            if mask is not None:
+                depressed, latched, locked, group = mask
+                self.lib.xkb_state_update_mask(state, depressed, latched, locked, 0, 0, group)
             for code in modifiers:
                 self.lib.xkb_state_update_key(state, code + 8, 1)
             labels = {}

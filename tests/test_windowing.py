@@ -11,6 +11,23 @@ class WindowingTests(unittest.TestCase):
         self.assertEqual(choose_ui('auto', {'XDG_CURRENT_DESKTOP': 'GNOME'}), 'x11')
         self.assertEqual(choose_ui('x11', {'NIRI_SOCKET': '/tmp/niri.sock'}), 'x11')
 
+    def test_cosmic_selection(self):
+        from system_keyboard.wayland_detection import compositor, detect_layout
+        for desktop in ('COSMIC', 'cosmic', 'pop:COSMIC'):
+            with self.subTest(desktop=desktop):
+                environment = {'XDG_CURRENT_DESKTOP': desktop,
+                               'WAYLAND_DISPLAY': 'wayland-0'}
+                self.assertEqual(compositor(environment), 'cosmic')
+                self.assertEqual(choose_ui('auto', environment), 'layer-shell')
+                self.assertEqual(choose_ui('x11', environment), 'x11')
+                from unittest.mock import patch
+                with patch('system_keyboard.cosmic_detection.CosmicLayout') as adapter:
+                    self.assertIs(detect_layout(environment), adapter.return_value)
+                    adapter.assert_called_once_with()
+        self.assertIsNone(compositor({'XDG_CURRENT_DESKTOP': 'cosmic-other'}))
+        self.assertEqual(compositor({'XDG_CURRENT_DESKTOP': 'COSMIC',
+                                     'NIRI_SOCKET': '/tmp/niri.sock'}), 'niri')
+
     def test_bottom_geometry(self):
         self.assertEqual(bottom_geometry(0, 0, 1920, 1080, 310), (460, 770, 1000, 310))
         self.assertEqual(bottom_geometry(-1920, 100, 1920, 1080, 310), (-1460, 870, 1000, 310))
