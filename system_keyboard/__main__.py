@@ -7,7 +7,7 @@ def main():
     parser = argparse.ArgumentParser(description='Системная экранная клавиатура Linux')
     parser.add_argument('--ui', choices=['auto', 'x11', 'layer-shell'], default='auto',
                         help='auto: layer-shell в niri/Sway/Hyprland, X11 в остальных сеансах')
-    parser.add_argument('--layout', default='auto', help='auto: раскладка X11 или IPC niri/Sway/Hyprland; либо фиксированные подписи XKB: ru, us, de и др.')
+    parser.add_argument('--layout', default='auto', help='auto: раскладка X11 или IPC niri/Sway/Hyprland; gsettings: sources/current; либо фиксированные подписи XKB: ru, us, de и др.')
     parser.add_argument('--variant', default='', help='Вариант XKB, например dvorak')
     parser.add_argument('--switch-shortcut',
                         choices=['next-layout', 'super-space', 'alt-shift', 'ctrl-shift'],
@@ -17,7 +17,7 @@ def main():
     args = parser.parse_args()
     if args.bottom_margin < 0:
         parser.error('--bottom-margin не может быть отрицательным')
-    if args.layout == 'auto' and args.variant:
+    if args.layout in ('auto', 'gsettings') and args.variant:
         parser.error('--variant требует явного --layout, например --layout us')
     from .windowing import choose_ui, configure_window
     ui = choose_ui(args.ui, os.environ)
@@ -51,7 +51,10 @@ def main():
     manual_layout = False
     try:
         if args.layout == 'auto':
-            if ui == 'layer-shell':
+            if 'gnome' in os.environ.get('XDG_CURRENT_DESKTOP', '').lower().split(':'):
+                from .gsettings_detection import GSettingsLayout
+                layout = GSettingsLayout()
+            elif ui == 'layer-shell':
                 from .wayland_detection import detect_layout
                 from .manual_layout import ManualLayout
                 try:
@@ -62,6 +65,9 @@ def main():
                     manual_layout = True
             else:
                 layout = X11Layout()
+        elif args.layout == 'gsettings':
+            from .gsettings_detection import GSettingsLayout
+            layout = GSettingsLayout()
         else:
             layout = Layout(args.layout, args.variant)
     except Exception as exc:
@@ -167,7 +173,7 @@ def main():
     window.connect('destroy', lambda *_: Gtk.main_quit())
     refresh()
     window.show_all()
-    timer = GLib.timeout_add(150, refresh) if args.layout == 'auto' else None
+    timer = GLib.timeout_add(150, refresh) if args.layout in ('auto', 'gsettings') else None
     try:
         Gtk.main()
     except KeyboardInterrupt:
