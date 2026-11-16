@@ -35,6 +35,8 @@ class X11Layout:
         self.lib.XkbGetState.restype = C.c_int
         self.lib.XkbLockGroup.argtypes = [C.c_void_p, C.c_uint, C.c_uint]
         self.lib.XkbLockGroup.restype = C.c_int
+        self.lib.XkbLockModifiers.argtypes = [C.c_void_p, C.c_uint, C.c_uint, C.c_uint]
+        self.lib.XkbLockModifiers.restype = C.c_int
         self.lib.XSync.argtypes = [C.c_void_p, C.c_int]
         self.lib.XSync.restype = C.c_int
         self.display = self.lib.XOpenDisplay(None)
@@ -48,6 +50,20 @@ class X11Layout:
             raise RuntimeError('Не удалось получить текущую раскладку XKB')
         if not self.lib.XkbLockGroup(self.display, 0x0100, (state.group + 1) % 4):
             raise RuntimeError('Не удалось переключить раскладку XKB')
+        self.lib.XSync(self.display, False)
+
+    def caps_lock(self):
+        state = XkbState()
+        if self.lib.XkbGetState(self.display, 0x0100, C.byref(state)) != 0:
+            raise RuntimeError('Не удалось получить состояние Caps Lock XKB')
+        return bool(state.locked_mods & int(self.Gdk.ModifierType.LOCK_MASK))
+
+    def toggle_caps_lock(self):
+        """Toggle the core keyboard lock, not a device-local key press."""
+        mask = int(self.Gdk.ModifierType.LOCK_MASK)
+        value = 0 if self.caps_lock() else mask
+        if not self.lib.XkbLockModifiers(self.display, 0x0100, mask, value):
+            raise RuntimeError('Не удалось переключить Caps Lock XKB')
         self.lib.XSync(self.display, False)
 
     def labels(self, modifiers=()):

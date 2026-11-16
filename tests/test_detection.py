@@ -25,8 +25,27 @@ class DetectionTests(unittest.TestCase):
             state = C.cast(pointer, C.POINTER(XkbState)).contents
             state.group = self.group
             state.mods = self.mods
+            state.locked_mods = self.mods & 2
             return 0
         self.layout.lib.XkbGetState.side_effect = get_state
+
+    def test_toggle_caps_lock_preserves_other_modifiers(self):
+        for mods, expected in [(128, 2), (130, 0)]:
+            with self.subTest(mods=mods):
+                self.mods = mods
+                self.layout.toggle_caps_lock()
+                self.layout.lib.XkbLockModifiers.assert_called_with(123, 0x100, 2, expected)
+                self.layout.lib.XSync.assert_called_with(123, False)
+
+    def test_caps_lock_errors_propagate(self):
+        self.layout.lib.XkbLockModifiers.return_value = 0
+        with self.assertRaisesRegex(RuntimeError, 'Caps Lock'):
+            self.layout.toggle_caps_lock()
+        self.layout.lib.XSync.assert_not_called()
+        self.layout.lib.XkbGetState.side_effect = None
+        self.layout.lib.XkbGetState.return_value = 1
+        with self.assertRaisesRegex(RuntimeError, 'Caps Lock'):
+            self.layout.caps_lock()
 
     def test_current_group_and_evdev_offset(self):
         labels = self.layout.labels()

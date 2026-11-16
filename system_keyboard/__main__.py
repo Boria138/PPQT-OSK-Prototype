@@ -101,7 +101,8 @@ def main():
     def refresh():
         # Ctrl/Alt shortcuts must not turn printable labels into control characters.
         try:
-            caps_lock = backend.caps_lock()
+            caps_lock = (layout.caps_lock() if isinstance(layout, X11Layout)
+                         and is_x11_session(os.environ) else backend.caps_lock())
             modifiers = keyboard.held & {42, 100}
             if caps_lock:
                 modifiers.add(58)
@@ -118,7 +119,11 @@ def main():
 
     def tap(button, code):
         try:
-            keyboard.tap(code)
+            if (code == 58 and isinstance(layout, X11Layout)
+                    and is_x11_session(os.environ)):
+                layout.toggle_caps_lock()
+            else:
+                keyboard.tap(code)
         except Exception as exc:
             status.set_text(str(exc))
         refresh()
